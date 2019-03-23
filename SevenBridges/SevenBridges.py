@@ -59,7 +59,7 @@ class Node(object):
     """
     A class that holds all the properties of a node including the Cypher representations of it
     """
-    def __init__(self, labels, properties):
+    def __init__(self, labels, properties, key=[], required_properties=[]):
         """
         Initilize this object with labels and properties, similarly to Py2Neo or other neo4j packages
         :param labels: this is either one or more labels as used in Neo4j
@@ -278,9 +278,10 @@ def apply_data_model(df, data_model, import_by):
     rel_fields, _ = dm_relationships(data_model)
     dm = dm.append(rel_fields, sort=False)
     df = df.reindex(sorted(df.columns), axis=1)
-    df.index = pd.MultiIndex.from_tuples([(pk, i) for i,pk in zip(range(len(df[import_by].tolist())),df[import_by].tolist())], names=["pk", "index"])
+    # making a multilevel index that is the primary key for the import and the actual row index number
+    df.index = pd.MultiIndex.from_tuples([(pk, i) for i,pk in zip(range(len(df[import_by].values.tolist())),df[import_by].values.tolist())], names=["pk", "index"])
     dm["labels"] = dm.apply(lambda x: ":".join(x["label"]), axis=1)
-    cols = list(df.columns)
+
     multi_lvl_index = []
     for label in dm["labels"].tolist():
         node = dm[dm["labels"] == label]
@@ -288,16 +289,12 @@ def apply_data_model(df, data_model, import_by):
         data_fields = sum(node["data_fields"].tolist(), [])
         for prop, data_field in zip(props, data_fields):
             multi_lvl_index.append((label, prop, data_field))
-        
-    mlvlix_df = pd.DataFrame(multi_lvl_index, columns=["node", "property", "data_field"])
-    # making sure the columns are in the correct order
-    new_cols = []
-    for col in cols:
-        _node = mlvlix_df[mlvlix_df["data_field"] == col].node.iloc[0]
-        _prop = mlvlix_df[mlvlix_df["data_field"] == col].property.iloc[0]
-        new_cols.append((_node, _prop, col))
 
-    df.columns = pd.MultiIndex.from_tuples(new_cols, names=["node", "property", "data_field"])
+    used_fields = sum([nodes["data_fields"] for nodes in data_model], []) + sum([rels["data_fields"] for rels in rel_fields], [])
+    unused_fields = list(set(df) - set(used_fields))
+    unused_mlti_lvl = [("UnusedFields", "ignored", field) for field in unused_fields]
+    mlvlix_df = pd.DataFrame(multi_lvl_index + unused_mlti_lvl, columns=["node", "property", "data_field"])
+    df.columns = pd.MultiIndex.from_tuples([tuple(x) for x in mlvlix_df.values], names=["node", "property", "data_field"])
 
     return df
 
@@ -311,8 +308,8 @@ def create_nodes_and_relationships(dm, data_model):
     :return: 2 lists of strings contianing Cypher statements that if run will generate a graph in Neo4j
     :rtype: 2 lists of strings
     """
-    # TODO: Gracefully catch error if more columns than relationship props? Basically if there are more columns than things defined it looks like it throws an error
-
+    # drop the unused fields when creating the nodes.. we don't need a bunch of odd nodes floating around
+    dm = dm.drop(columns=["UnusedFields"], level="node")
     node_defs = dict()
     rel_defs = dict()
     # Makes nodes
@@ -328,7 +325,6 @@ def create_nodes_and_relationships(dm, data_model):
             except:
                 is_rel = False
             if is_rel is True:
-                rel_data = nodes, labels
                 rel_data = nodes[labels]
                 rel_data.columns = rel_data.columns.get_level_values("property")
                 rel_defs[pk][labels] = []
