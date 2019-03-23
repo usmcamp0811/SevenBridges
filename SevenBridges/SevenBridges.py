@@ -294,6 +294,7 @@ def apply_data_model(df, data_model, import_by):
     unused_fields = list(set(df) - set(used_fields))
     unused_mlti_lvl = [("UnusedFields", "ignored", field) for field in unused_fields]
     mlvlix_df = pd.DataFrame(multi_lvl_index + unused_mlti_lvl, columns=["node", "property", "data_field"])
+    mlvlix_df.sort_values("data_field", inplace=True, axis=0)
     df.columns = pd.MultiIndex.from_tuples([tuple(x) for x in mlvlix_df.values], names=["node", "property", "data_field"])
 
     return df
