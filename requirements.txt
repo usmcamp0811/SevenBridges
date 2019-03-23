@@ -1,0 +1,8 @@
+neo4j==1.7.2
+neobolt==1.7.4
+neotime==1.7.4
+numpy==1.16.2
+pandas==0.24.2
+python-dateutil==2.8.0
+pytz==2018.9
+six==1.12.0
