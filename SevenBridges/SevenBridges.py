@@ -125,7 +125,6 @@ class Node(object):
         :return: the string representation of the node less the CQL action
         :rtype: string
         """
-
         return f"({n}:{self.labels_string} {self.property_strings})"
         
     def CREATE(self, n="n"):
@@ -158,18 +157,36 @@ class Node(object):
         """
         return f"MERGE ({n}:{self.labels_string} {self.property_strings})"
 
-    def UNIQUE(self, n="n"):
+    def DELETE(self, n="n", detach=False, relationships=False, relationship_label=""):
+        if detach is True:
+            return f"MATCH ({n}:{self.labels_string} {self.property_strings}) DETACH DELETE {n}"
+        if relationships is True:
+            if len(relationship_label) > 0:
+                relationship_label = f":{relationship_label}"
+            return f"MATCH ({n}:{self.labels_string} {self.property_strings})-[r{relationship_label}]->() DELETE (r)"
+        return f"MATCH ({n}:{self.labels_string} {self.property_strings}) DELETE {n}"
+
+
+    def UNIQUE(self, n="n", drop=False):
+        if drop is True:
+            return f"DROP CONSTRAINT ON ({n}:{self.labels_string}) ASSERT {n}.{self.unique_constraint} IS UNIQUE"
         return f"CREATE CONSTRAINT ON ({n}:{self.labels_string}) ASSERT {n}.{self.unique_constraint} IS UNIQUE"
 
-    def NODE_KEY(self, n="n"):
+    def NODE_KEY(self, n="n", drop=False):
         c = [f"{n}.{x}" for x in self.__primarykey__]
         c = ",".join(c)
+        if drop is True:
+            return f"DROP CONSTRAINT ON ({n}:{self.labels_string}) ASSERT ({c}) IS NODE KEY"
         return f"CREATE CONSTRAINT ON ({n}:{self.labels_string}) ASSERT ({c}) IS NODE KEY"
 
-    def REQUIRE(self, n='n'):
+    def REQUIRE(self, n='n', drop=False):
         constraints = []
+        if drop is True:
+            create_drop = "DROP"
+        else:
+            create_drop = "CREATE"
         for rc in self.required_constraint:
-            constraints.append(f"CREATE CONSTRAINT ON ({n}:{self.labels_string}) ASSERT exists({n}.{rc})")
+            constraints.append(f"{create_drop} CONSTRAINT ON ({n}:{self.labels_string}) ASSERT exists({n}.{rc})")
         if len(constraints) == 1:
             return constraints[0]
         else:
