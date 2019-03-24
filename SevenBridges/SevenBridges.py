@@ -5,6 +5,7 @@ import ast
 import pytz
 import datetime
 import warnings
+import copy
 
 
 class SevenBridges(object):
@@ -388,7 +389,7 @@ def apply_data_model(df, data_model, import_by=None):
 
     return df
 
-def create_nodes_and_relationships(dm, data_model):
+def create_nodes_and_relationships(df, data_model):
     """
     This generates all the Cypher needed to turn your dataframe into a graph. It does not actually run cypher queries
     :param dm: a dataframe that has been preprocessed by apply_data_model
@@ -399,319 +400,28 @@ def create_nodes_and_relationships(dm, data_model):
     :rtype: 2 lists of strings
     """
     # drop the unused fields when creating the nodes.. we don't need a bunch of odd nodes floating around
-    dm = dm.drop(columns=["UnusedFields"], level="node")
-    node_defs = dict()
-    rel_defs = dict()
-    # Makes nodes
-    for pk in list(set(dm.index)):
-        # iterate through the index.. aka the records we are importing.. ie student
-        nodes = dm.loc[[pk]]
-        node_defs[pk] = dict()
-        rel_defs[pk] = dict()
-        for labels in list(set(nodes.T.index.get_level_values("node"))):
-            # iterate over all the labels.. aka nodes in the data model
-            try:
-                is_rel = type(eval(labels)) == tuple
-            except:
-                is_rel = False
-            if is_rel is True:
-                rel_data = nodes[labels]
-                rel_data.columns = rel_data.columns.get_level_values("property")
-                rel_defs[pk][labels] = []
-                for ix in range(rel_data.shape[0]):
-                    # iterate over every node of the nodes.. may be just one.. may be many if we have something like two dads
-
-                    properties = rel_data.iloc[ix].dropna().to_dict() # test that I dont need to do dropna conditions like all or any or i dunno
-                    if len(properties.keys()) == 0:
-                        continue
-                    if len(properties.keys()) > 0:
-                        # make sure we don't attempt to make an empty node for no reason
-
-                        rel_defs[pk][labels].append(properties)   # save node objects in a dictionary indexed by the levels of this loop
-
-            else:
-                node_data = nodes[labels]
-                node_data.columns = node_data.columns.get_level_values("property")
-                node_defs[pk][labels] = []
-                for ix in range(node_data.shape[0]):
-                    # iterate over every node of the nodes.. may be just one.. may be many if we have something like two dads
-
-                    properties = node_data.iloc[ix].dropna().to_dict() # test that I dont need to do dropna conditions like all or any or i dunno
-
-                    if len(properties.keys()) > 0:
-                        nd = get_node_def(labels, data_model)
-                        # make sure we don't attempt to make an empty node for no reason
-                        node = Node(labels, properties, key=nd["key"], required_properties=nd["required_properties"], unique_properties=nd["unique_properties"])
-                        node_defs[pk][labels].append(node)   # save node objects in a dictionary indexed by the levels of this loop
-
-    _, relationships = dm_relationships(data_model)
-
-    for pk in list(set(dm.index)):
-        for rel in relationships:
-            for node in node_defs[pk].keys():
-                try:
-                    a = node_defs[pk][rel[0]]
-                    relationship = rel[1]
-                    b = node_defs[pk][rel[2]]
-
-                except:
-                    continue
-
-
-    node_dfs = pd.DataFrame(node_defs)
-    node_dfs.columns = pd.MultiIndex.from_tuples(list(node_defs.keys()), names=["pk", "index"])
-    rel_dfs = pd.DataFrame(rel_defs)
-    rel_dfs.columns = pd.MultiIndex.from_tuples(list(node_defs.keys()), names=["pk", "index"])
-    _relationships_to_make_maybe_dupes = []
-    for pk in node_dfs.columns.get_level_values("pk"):
-        for _relationship in relationships:
-            a_node = node_dfs.xs(_relationship[0])[pk]
-            b_node = node_dfs.xs(_relationship[2])[pk]
-            a_ixs = a_node.index.get_level_values("index")
-            b_ixs = b_node.index.get_level_values("index")
-            rel = _relationship[1]
-            for a_ix in a_ixs:
-                rel_ix = (pk, a_ix)
-
-                a = a_node.xs(a_ix)
-
-                if len(a) == 0:
-                    continue
-                else:
-                    a = a[0]
-                for b_ix in b_ixs:
-                    b = b_node.xs(b_ix)
-                    if len(b) == 0:
-                        continue
-                    else:
-                        b = b[0]
-                    rel_col_name = str((a.labels_string, rel, b.labels_string))
-
-                    if rel_col_name in dm.columns.get_level_values("node"):
-                        _props = rel_dfs.xs(rel_col_name).loc[rel_ix][0]
-                        # make rel with props.
-                        relationship = Relationship(a, rel, b, properties=_props)
-
-                    else:
-                        relationship = Relationship(a, rel, b)
-                    _relationships_to_make_maybe_dupes.append(relationship)
-
-
-    # complicated set like function basically cause the objects don't equal but we rely on the repr method to compare thigns
-    # TODO: Figure out why objects with the same __repr__ are not equal
-    relationships_to_make = [_relationships_to_make_maybe_dupes[0]]
-    for z in _relationships_to_make_maybe_dupes:
-        _skip = z.__repr__() == relationships_to_make[-1].__repr__()
-        if _skip is False:
-            relationships_to_make.append(z)
-
-    # convert the df of nodes to a list to make
-    nodes_to_make = []
-    for node_type in node_dfs.index:
-        node_dfs.loc[node_type]
-        nodes_to_make.append(node_dfs.loc[node_type].tolist())
-    nodes_to_make = sum(sum(nodes_to_make, []),[])
-    return nodes_to_make, relationships_to_make
-
-
-if __name__ == "__main__":
-    import datetime
-    import pandas as pd
-
-    student = Node(labels=["Person", "Student"],
-                   properties=dict(id="student_id",
-                                   name="student_name",
-                                   dob="student_dob",
-                                   grade="student_grade",
-                                   gpa="student_gpa",
-                                   test="notthere"
-                                   ),
-                   relationships=[
-                       Relationship(rel_tuple=("Person:Student", "_IS_MEMBER_OF_", "Class")),
-                       Relationship(rel_tuple=("Person:Student", "_ATTENDS_", "School"))
-                   ],
-                   key=["id"],
-                   required_properties=["id", "name", "dob", "grade"],
-                   unique_properties=["id"]
-                   )
-
-    teacher = Node(labels=["Person", "Teacher"],
-                   properties=dict(id="teacher_id",
-                                   name="teacher_name",
-                                   degree="teacher_degree",
-                                   employment_date="teacher_employment_date"
-                                   ),
-                   relationships=[
-                       Relationship(rel_tuple=("Person:Teacher", "_TEACHES_", "Class",
-                                               dict(years_teaching="years_teaching")
-                                               )
-                                    ),
-                       Relationship(rel_tuple=("Person:Teacher", "_TEACHES_", "Person:Student"))
-                   ],
-                   key=["id"],
-                   required_properties=["id", "name"],
-                   unique_properties=["id"]
-                   )
-
-    class_node = Node(labels=["Class"],
-                      properties=dict(number="class_number",
-                                      subject="subject",
-                                      grade="grade"
-                                      ),
-                      relationships=[
-                          Relationship(rel_tuple=("Class", "_IS_AT_", "School",
-                                                  dict(room_number="class_room_number")
-                                                  )
-                                       )
-                      ],
-                      key=[],
-                      required_properties=["number", "subject", "grade"],
-                      unique_properties=[]
-                      )
-
-    father = Node(labels=["Person", "Parent", "Father"],
-                  properties=dict(name="father_name",
-                                  age="father_age"
-                                  ),
-                  relationships=[
-                      Relationship(rel_tuple=("Person:Parent:Father", "_PARENT_OF_", "Person:Student",
-                                              dict(type="father_type",
-                                                   pickup="f_pickup")
-                                              )
-                                   )
-                  ],
-                  key=[],
-                  required_properties=["name"],
-                  unique_properties=[]
-                  )
-
-    mother = Node(labels=["Person", "Parent", "Mother"],
-                  properties=dict(name="mother_name",
-                                  age="mother_age"
-                                  ),
-                  relationships=[
-                      Relationship(rel_tuple=("Person:Parent:Mother", "_PARENT_OF_", "Person:Student",
-                                              dict(type="mother_type",
-                                                   pickup="m_pickup")
-                                              )
-                                   )
-                  ],
-                  key=[],
-                  required_properties=["name"],
-                  unique_properties=[]
-                  )
-
-    school = Node(labels=["School"],
-                  properties=dict(name="school_name",
-                                  address="school_address"
-                                  ),
-                  relationships=[],
-                  key=["name", "address"],
-                  required_properties=["name", "address"],
-                  unique_properties=["name", "address"]
-                  )
-
-    data_model = [student, teacher, class_node, father, mother, school]
-
-    school_data = pd.DataFrame([
-        {
-            "student_id": "1234", "student_name": "Matt Camp", "studen_dob": "12/01/2001", "student_grade": 12,
-            "student_gpa": 3.8,
-            "teacher_id": "t234f", "teacher_name": "Kathy Fisher", "teacher_degree": "Math",
-            "teacher_employment_date": "08/01/1998",
-            "class_number": "MA301", "class_name": "Algebra II", "class_grade": 12,
-            "father_name": "Paul Camp", "father_age": 72,
-            "mother_name": "Helen Camp", "mother_age": 49,
-            "school_name": "Notre Dame High School", "school_address": "1234 Harvard Way, Chattanooga TN 35761",
-            "class_room_number": 303,
-            "years_teaching": 15,
-            "father_type": "Birth", "f_pickup": False,
-            "mother_type": "Birth", "m_pickup": True,
-            "NotUsedData": "Test"
-        },
-        {
-            "student_id": "1233434", "student_name": "Matt Billings", "studen_dob": "2/01/2001", "student_grade": 12,
-            "student_gpa": 3.7,
-            "teacher_id": "t234f", "teacher_name": "Kathy Fisher", "teacher_degree": "Math",
-            "teacher_employment_date": "08/01/1998",
-            "class_number": "MA301", "class_name": "Algebra II", "class_grade": 12,
-            "father_name": "Paul Billings", "father_age": 52,
-            "mother_name": "Helen Billings", "mother_age": 43,
-            "school_name": "Notre Dame High School", "school_address": "1234 Harvard Way, Chattanooga TN 35761",
-            "class_room_number": 303,
-            "years_teaching": 15,
-            "father_type": "Step", "f_pickup": True,
-            "mother_type": "Birth", "m_pickup": True
-        },
-        {
-            "student_id": "12534", "student_name": "Jesse Jones", "studen_dob": "12/01/2004", "student_grade": 9,
-            "student_gpa": 3.2,
-            "teacher_id": "t232323234f", "teacher_name": "Marie Daily", "teacher_degree": "English",
-            "teacher_employment_date": "08/01/1999",
-            "class_number": "EN230", "class_name": "English", "class_grade": 12,
-            "father_name": "Bob Jones", "father_age": 32,
-            "mother_name": "Mary Jones", "mother_age": 39,
-            "school_name": "Sudden Valley High School", "school_address": "1234 Jones Road, Nashville TN 35761",
-            "class_room_number": 43,
-            "years_teaching": 3,
-            "father_type": "Birth", "f_pickup": True,
-            "mother_type": "Birth", "m_pickup": True
-        },
-        {
-            "student_id": "12324", "student_name": "Billy Jones", "studen_dob": "12/01/2003", "student_grade": 9,
-            "student_gpa": 2.9,
-            "teacher_id": "twsv234f", "teacher_name": "Kathy Freeley", "teacher_degree": "History",
-            "teacher_employment_date": "08/01/1988",
-            "class_number": "HIS432", "class_name": "American History", "class_grade": 11,
-            "father_name": "Gary Carell", "father_age": 49,
-            "school_name": "Sudden Valley High School", "school_address": "1234 Jones Road, Nashville TN 35761",
-            "class_room_number": 423,
-            "years_teaching": 1,
-            "father_type": "Birth", "f_pickup": True
-        },
-        {
-            "student_id": "12324", "student_name": "Billy Jones", "studen_dob": "12/01/2003", "student_grade": 9,
-            "student_gpa": 2.9,
-            "father_name": "Ace Colbert", "father_age": 32,
-            "father_type": "Step", "f_pickup": True
-        }
-
-    ])
-    school_data
-    dm = apply_data_model(school_data, data_model)
-    dm.T.sort_values([('node')], ascending=False)
-
     # # create
     nodes_to_make = dict()
-    # for model_node in data_model:
-    #     # TODO: figure a way to not have to do extra loop here
-    #     nodes_to_make[model_node.labels_string] = []
-    test = []
-    df = school_data
+    rels_to_make = dict()
+    # for each record we make node obejects then we make relationships objects
     for ix, data_content in df.iterrows():
         rec_nodes_to_make = dict()
+        rec_rels_to_make = dict()
         for model_node in data_model:
-            properties = dict()
             # make a copy of the node model
-            NewNode = Node()
-            NewNode.__dict__ = model_node.__dict__.copy()
+            NewNode = copy.deepcopy(model_node)
             NewNode.load_properties_from_series(data_content)
-            rec_nodes_to_make[NewNode.labels_string] = NewNode
+            if pd.DataFrame(NewNode.properties, index=[0]).dropna(how='all').shape[0] > 0:
+                rec_nodes_to_make[NewNode.labels_string] = NewNode
 
         for label, new_node in rec_nodes_to_make.items():
-            rels = []
             for rel in new_node.relationships:
-                #             print(rel.properties)
-                rel.load_properties_from_series(data_content)
-                rels.append(rel)
-                test.append(rels.copy())
-            new_node.relationships = rels
+                rel.NodeA = new_node
+                if rel.rel_tuple[2] in rec_nodes_to_make.keys():
+                    rel.NodeB = rec_nodes_to_make[rel.rel_tuple[2]]
+                    rel.load_properties_from_series(data_content)
+                    rec_rels_to_make[rel.label] = rel
 
-
-        #         nodes_to_make[model_node.labels_string].append(NewNode)
         nodes_to_make[ix] = rec_nodes_to_make
-
-
-    print(nodes_to_make[0]["Person:Teacher"].relationships[0].properties)
-    print(test[2][0].properties)
-    # nodes_to_make
+        rels_to_make[ix] = rec_rels_to_make
+    return nodes_to_make, rels_to_make
