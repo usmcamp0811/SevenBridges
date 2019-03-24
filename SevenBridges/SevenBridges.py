@@ -6,7 +6,9 @@ import pytz
 import datetime
 import warnings
 import copy
+import logging
 
+log = logging.getLogger(__file__)
 
 class SevenBridges(object):
     def __init__(self, data_model=None, import_data=None, import_node=None):
@@ -68,7 +70,7 @@ class Node(object):
     """
     A class that holds all the properties of a node including the Cypher representations of it
     """
-    def __init__(self, labels=None, properties=None, relationships=[], node_key=[], required_constraints=[], unique_constraints=[]):
+    def __init__(self, labels=None, properties=None, relationships=[], node_key=[], required_constraints=[], unique_constraints=None):
         """
         Initilize this object with labels and properties, similarly to Py2Neo or other neo4j packages
         :param labels: this is either one or more labels as used in Neo4j
@@ -78,10 +80,7 @@ class Node(object):
         """
         self.labels = labels
         self.properties = properties
-
-
         self.relationships = relationships
-
         if type(labels) == str:
             self.labels_string = self.labels
             self.labels = self.labels.split(":") # make it be uniform for if we ever reference this attribute
@@ -104,6 +103,7 @@ class Node(object):
         for k,v in zip(self.properties.keys(), series.items()):
             properties[k] = v[1]
         self.properties = properties
+        log.debug(f"Setting new Node Properties=>", self.properties)
         property_strings = Template(build_properties(self.properties))
         self.property_strings = property_strings.substitute(**self.properties)
 
@@ -113,6 +113,7 @@ class Node(object):
 
     def update_properties(self, properties):
         self.properties = properties
+        log.debug(f"Setting new Node Properties=>",self.properties)
         property_strings = Template(build_properties(self.properties))
         self.property_strings = property_strings.substitute(**self.properties)
 
@@ -190,6 +191,7 @@ class Node(object):
         if len(constraints) == 1:
             return constraints[0]
         else:
+            warnings.warn("There are multiple constraints to set. The output is a list of CQL...")
             return constraints
 
 
@@ -197,7 +199,7 @@ class Relationship():
     """
     A object containing all the information to create or find a relationship
     """
-    def __init__(self, node_a=None, relates_to=None, node_b=None, properties=None, rel_tuple=None):
+    def __init__(self, node_a=None, relates_to=None, node_b=None, properties=None, rel_tuple=None, required_constraints=[]):
         """
 
         :param NodeA: The node that is the origin for the relationship
@@ -212,7 +214,9 @@ class Relationship():
         self.NodeA = node_a # Node Object
         self.NodeB = node_b # Node Object
         self.label = relates_to # string?
+        self.required_constraint = required_constraints
         if rel_tuple is not None:
+            log.debug(f"Relationship Tuple=>", rel_tuple)
             assert len(rel_tuple) <= 4 # make sure its avalid rel tuple. len 3 == no properties to pass len 4 means properties
             if len(rel_tuple) == 4:
                 if properties is None:
@@ -260,17 +264,6 @@ class Relationship():
             id = self.MERGE()
             return id
 
-    # def ENTITY(self, n="r"):
-    #     """
-    #     This is the information that would be used to find or create this node in CQL without MERGE, MATCH or CREATE
-    #     prefixed to it.
-    #     :param n: the alias to be used to refer to this node in CQL
-    #     :type n: string
-    #     :return: the string representation of the node less the CQL action
-    #     :rtype: string
-    #     """
-    #     return f"({n}:{self.label} {self.property_strings})"
-
     def MERGE(self):
         """
         creates the Cypher query to make this relationship
@@ -283,6 +276,20 @@ class Relationship():
             return f"MATCH {a}, {b} MERGE (a)-[r:{self.label}]->(b) RETURN r"
         else:
             return f"MATCH {a}, {b} MERGE (a)-[r:{self.label} {self.property_strings}]->(b) RETURN r"
+
+    def REQUIRE(self, n='r', drop=False):
+        constraints = []
+        if drop is True:
+            create_drop = "DROP"
+        else:
+            create_drop = "CREATE"
+        for rc in self.required_constraint:
+            constraints.append(f"{create_drop} CONSTRAINT ON ()-[{n}:{self.label}]-() ASSERT exists({n}.{rc})")
+        if len(constraints) == 1:
+            return constraints[0]
+        else:
+            warnings.warn("There are multiple constraints to set. The output is a list of CQL...")
+            return constraints
 
 """
 DateTime() and Point() are probably the two main reasons I am creating this package. Py2Neo doesn't support
