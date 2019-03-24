@@ -68,7 +68,7 @@ class Node(object):
     """
     A class that holds all the properties of a node including the Cypher representations of it
     """
-    def __init__(self, labels=None, properties=None, relationships=[], key=[], required_properties=[], unique_properties=[]):
+    def __init__(self, labels=None, properties=None, relationships=[], node_key=[], required_constraints=[], unique_constraints=[]):
         """
         Initilize this object with labels and properties, similarly to Py2Neo or other neo4j packages
         :param labels: this is either one or more labels as used in Neo4j
@@ -92,9 +92,9 @@ class Node(object):
             self.property_strings = property_strings.substitute(**self.properties)
         else:
             self.property_strings = None
-        self.required_properties = required_properties
-        self.unique_properties = unique_properties
-        self.__primarykey__ = key
+        self.required_constraint = required_constraints
+        self.unique_constraint = unique_constraints
+        self.__primarykey__ = node_key
         if labels is not None:
             self.__primarylabel__ = self.labels[0]
 
@@ -159,7 +159,22 @@ class Node(object):
         return f"MERGE ({n}:{self.labels_string} {self.property_strings})"
 
     def UNIQUE(self, n="n"):
-        return f"CREATE CONSTRAINT ON ({n}:{self.labels_string}) ASSERT {n}.isbn IS UNIQUE"
+        return f"CREATE CONSTRAINT ON ({n}:{self.labels_string}) ASSERT {n}.{self.unique_constraint} IS UNIQUE"
+
+    def NODE_KEY(self, n="n"):
+        c = [f"{n}.{x}" for x in self.__primarykey__]
+        c = ",".join(c)
+        return f"CREATE CONSTRAINT ON ({n}:{self.labels_string}) ASSERT ({c}) IS NODE KEY"
+
+    def REQUIRE(self, n='n'):
+        constraints = []
+        for rc in self.required_constraint:
+            constraints.append(f"CREATE CONSTRAINT ON ({n}:{self.labels_string}) ASSERT exists({n}.{rc})")
+        if len(constraints) == 1:
+            return constraints[0]
+        else:
+            return constraints
+
 
 class Relationship():
     """
