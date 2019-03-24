@@ -419,8 +419,9 @@ def create_nodes_and_relationships(df, data_model):
                 rel.NodeA = new_node
                 if rel.rel_tuple[2] in rec_nodes_to_make.keys():
                     rel.NodeB = rec_nodes_to_make[rel.rel_tuple[2]]
+                    rel.label = rel.rel_tuple[1]
                     rel.load_properties_from_series(data_content)
-                    rec_rels_to_make[rel.label] = rel
+                    rec_rels_to_make[rel.__repr__()] = rel
 
         nodes_to_make[ix] = rec_nodes_to_make
         rels_to_make[ix] = rec_rels_to_make
