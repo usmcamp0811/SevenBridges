@@ -67,7 +67,7 @@ class Node(object):
     """
     A class that holds all the properties of a node including the Cypher representations of it
     """
-    def __init__(self, labels, properties, data_fields=[], relationships=[], key=[], required_properties=[], unique_properties=[]):
+    def __init__(self, labels, properties, relationships=[], key=[], required_properties=[], unique_properties=[]):
         """
         Initilize this object with labels and properties, similarly to Py2Neo or other neo4j packages
         :param labels: this is either one or more labels as used in Neo4j
@@ -77,7 +77,7 @@ class Node(object):
         """
         self.labels = labels
         self.properties = properties
-        self.data_fields = data_fields
+        self.relationships = relationships
         if type(labels) == str:
             self.labels_string = self.labels
             self.labels = self.labels.split(":") # make it be uniform for if we ever reference this attribute
@@ -85,11 +85,10 @@ class Node(object):
             self.labels_string = build_labels(self.labels)
         property_strings = Template(build_properties(self.properties))
         self.property_strings = property_strings.substitute(**self.properties)
-        self.key = key
         self.required_properties = required_properties
         self.unique_properties = unique_properties
-        self.__primarykey__ = None
-        self.__primarylabel__ = None
+        self.__primarykey__ = key
+        self.__primarylabel__ = self.labels[0]
 
     def load_properties_from_series(self, series=pd.Series()):
         series = series.reindex(list(self.properties.values()), axis=1)
@@ -103,6 +102,7 @@ class Node(object):
     def __repr__(self):
         id = self.ENTITY()
         return id
+
 
     def ENTITY(self, n="n"):
         """
@@ -152,7 +152,7 @@ class Relationship():
     """
     A object containing all the information to create or find a relationship
     """
-    def __init__(self, NodeA, relates_to, NodeB, properties=None):
+    def __init__(self, node_a=None, relates_to=None, node_b=None, properties=None, rel_tuple=None):
         """
 
         :param NodeA: The node that is the origin for the relationship
@@ -164,20 +164,54 @@ class Relationship():
         :param properties: key values for the properties that the relationship may have.. this is optional
         :type properties: dict
         """
-        self.NodeA = NodeA # Node Object
-        self.NodeB = NodeB # Node Object
-        self.properties = properties # dictionary
+        self.NodeA = node_a # Node Object
+        self.NodeB = node_b # Node Object
         self.label = relates_to # string?
-        if self.properties is not None:
+
+        assert len(rel_tuple) <= 4 # make sure its avalid rel tuple. len 3 == no properties to pass len 4 means properties
+
+        if len(rel_tuple) == 4:
+            if properties is None:
+                self.properties = rel_tuple[3]
+                properties = self.properties
+            rel_tuple = rel_tuple[:3]
+
+        self.rel_tuple = rel_tuple
+        if properties is None:
+            self.properties = {}
+        if properties is not None:
             property_string = Template(build_properties(self.properties))
             self.property_strings = property_string.substitute(**self.properties)
         else:
             self.property_strings = None
 
+    def load_properties_from_series(self, series=pd.Series()):
+        series = series.reindex(list(self.properties.values()), axis=1)
+        properties = dict()
+        for k,v in zip(self.properties.keys(), series.items()):
+            properties[k] = v[1]
+        self.properties = properties
+        property_strings = Template(build_properties(self.properties))
+        self.property_strings = property_strings.substitute(**self.properties)
+
     def __repr__(self):
-        id = self.MERGE()
-        return id
-    
+        if self.NodeA is None:
+            return str(self.rel_tuple)
+        else:
+            id = self.MERGE()
+            return id
+
+    # def ENTITY(self, n="r"):
+    #     """
+    #     This is the information that would be used to find or create this node in CQL without MERGE, MATCH or CREATE
+    #     prefixed to it.
+    #     :param n: the alias to be used to refer to this node in CQL
+    #     :type n: string
+    #     :return: the string representation of the node less the CQL action
+    #     :rtype: string
+    #     """
+    #     return f"({n}:{self.label} {self.property_strings})"
+
     def MERGE(self):
         """
         creates the Cypher query to make this relationship
@@ -276,13 +310,12 @@ def dm_relationships(data_model):
     rel_fields = []
     rels = []
     for node in data_model:
-        rs = node["relationships"]
+        rs = node.relationships
         for r in rs:
             rels.append(r)
-            if len(r) == 4:
-                # we have relationship properties
-                rel_dm = dict(label=[str(r[:3])],relationships=[str(r[:3])], **r[3])
-                rel_fields.append(rel_dm)
+            rel_dm = dict(label=[str(r)], relationships=[str(r)], data_fields=list(r.properties.values()),
+                          property_fields=list(r.properties.keys()))
+            rel_fields.append(rel_dm)
 
     return rel_fields, rels
 
@@ -298,28 +331,33 @@ def apply_data_model(df, data_model, import_by):
     :return: multi-level columns based on node, properties nad original field names for the imput dataframe
     """
     # TODO: reexamine the import_by parameter and determine if thats the best thing to do
-    dm = pd.DataFrame(data_model)
-    rel_fields, _ = dm_relationships(data_model)
-    dm = dm.append(rel_fields, sort=False)
+    rel_fields = []
+    rels = []
+    for node in data_model:
+        rs = node.relationships
+        for r in rs:
+            rels.append(r)
+            data_fields = list(r.properties.values())
+            property_fields = list(r.properties.keys())
+            rel_fields.append([(r.__repr__(), pf, df) for pf, df in zip(property_fields, data_fields)])
+        data_fields = list(node.properties.values())
+        property_fields = list(node.properties.keys())
+        rel_fields.append([(node.labels_string, pf, df) for pf, df in zip(property_fields, data_fields)])
+
+    mlti_lvl_labels = pd.DataFrame(sum(rel_fields, []), columns=["node", "property", "data_field"])
+    unused_fields = list(set(df.columns) - set(mlti_lvl_labels["data_field"]))
+    rel_fields.append([("UnusedFields", "ignored", field) for field in unused_fields])
+    mlti_lvl_labels = pd.DataFrame(sum(rel_fields, []), columns=["node", "property", "data_field"])
+
     df = df.reindex(sorted(df.columns), axis=1)
     # making a multilevel index that is the primary key for the import and the actual row index number
     df.index = pd.MultiIndex.from_tuples([(pk, i) for i,pk in zip(range(len(df[import_by].values.tolist())),df[import_by].values.tolist())], names=["pk", "index"])
-    dm["labels"] = dm.apply(lambda x: ":".join(x["label"]), axis=1)
+    # makes sure if we have extra columns defined in teh nodes that we don't shit the bed when applying our data model to the
+    # the dataframe we have in front of us right now
+    mlti_lvl_labels = mlti_lvl_labels[mlti_lvl_labels["data_field"].isin(df.columns)]
+    mlti_lvl_labels.sort_values("data_field", inplace=True, axis=0)
 
-    multi_lvl_index = []
-    for label in dm["labels"].tolist():
-        node = dm[dm["labels"] == label]
-        props = sum(node["property_fields"].tolist(), [])
-        data_fields = sum(node["data_fields"].tolist(), [])
-        for prop, data_field in zip(props, data_fields):
-            multi_lvl_index.append((label, prop, data_field))
-
-    used_fields = sum([nodes["data_fields"] for nodes in data_model], []) + sum([rels["data_fields"] for rels in rel_fields], [])
-    unused_fields = list(set(df) - set(used_fields))
-    unused_mlti_lvl = [("UnusedFields", "ignored", field) for field in unused_fields]
-    mlvlix_df = pd.DataFrame(multi_lvl_index + unused_mlti_lvl, columns=["node", "property", "data_field"])
-    mlvlix_df.sort_values("data_field", inplace=True, axis=0)
-    df.columns = pd.MultiIndex.from_tuples([tuple(x) for x in mlvlix_df.values], names=["node", "property", "data_field"])
+    df.columns = pd.MultiIndex.from_tuples([tuple(x) for x in mlti_lvl_labels.values], names=["node", "property", "data_field"])
 
     return df
 
