@@ -50,16 +50,24 @@ def build_labels(labels):
     :return: string representation of the list passed in.. with ":" seperating the multiple labels
     :rtype: string
     """
-    if len(labels) > 1:
+
+    if type(labels) == list:
         return ":".join(labels)
     else:
-        return labels[0]
+        return labels
+
+def get_node_def(label, data_model):
+    for l in data_model:
+        if build_labels(label) == build_labels(l["label"]):
+            return l
+    warnings.warn(f"{label} is not in the Data Model. `None` was returned.")
+    return None
 
 class Node(object):
     """
     A class that holds all the properties of a node including the Cypher representations of it
     """
-    def __init__(self, labels, properties, key=[], required_properties=[]):
+    def __init__(self, labels, properties, data_fields=[], relationships=[], key=[], required_properties=[], unique_properties=[]):
         """
         Initilize this object with labels and properties, similarly to Py2Neo or other neo4j packages
         :param labels: this is either one or more labels as used in Neo4j
@@ -69,6 +77,7 @@ class Node(object):
         """
         self.labels = labels
         self.properties = properties
+        self.data_fields = data_fields
         if type(labels) == str:
             self.labels_string = self.labels
             self.labels = self.labels.split(":") # make it be uniform for if we ever reference this attribute
@@ -76,9 +85,21 @@ class Node(object):
             self.labels_string = build_labels(self.labels)
         property_strings = Template(build_properties(self.properties))
         self.property_strings = property_strings.substitute(**self.properties)
+        self.key = key
+        self.required_properties = required_properties
+        self.unique_properties = unique_properties
         self.__primarykey__ = None
         self.__primarylabel__ = None
-        
+
+    def load_properties_from_series(self, series=pd.Series()):
+        series = series.reindex(list(self.properties.values()), axis=1)
+        properties = dict()
+        for k,v in zip(self.properties.keys(), series.items()):
+            properties[k] = v[1]
+        self.properties = properties
+        property_strings = Template(build_properties(self.properties))
+        self.property_strings = property_strings.substitute(**self.properties)
+
     def __repr__(self):
         id = self.ENTITY()
         return id
@@ -123,6 +144,9 @@ class Node(object):
         :rtype: string
         """
         return f"MERGE ({n}:{self.labels_string} {self.property_strings})"
+
+    def UNIQUE(self, n="n"):
+        return f"CREATE CONSTRAINT ON ({n}:{self.labels_string}) ASSERT {n}.isbn IS UNIQUE"
 
 class Relationship():
     """
@@ -350,8 +374,9 @@ def create_nodes_and_relationships(dm, data_model):
                     properties = node_data.iloc[ix].dropna().to_dict() # test that I dont need to do dropna conditions like all or any or i dunno
 
                     if len(properties.keys()) > 0:
+                        nd = get_node_def(labels, data_model)
                         # make sure we don't attempt to make an empty node for no reason
-                        node = Node(labels, properties)
+                        node = Node(labels, properties, key=nd["key"], required_properties=nd["required_properties"], unique_properties=nd["unique_properties"])
                         node_defs[pk][labels].append(node)   # save node objects in a dictionary indexed by the levels of this loop
 
     _, relationships = dm_relationships(data_model)
