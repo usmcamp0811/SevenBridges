@@ -423,6 +423,9 @@ def apply_data_model(df, data_model, import_by=None):
     # the dataframe we have in front of us right now
     mlti_lvl_labels = mlti_lvl_labels[mlti_lvl_labels["data_field"].isin(df.columns)]
     if len(mlti_lvl_labels["data_field"]) > df.columns:
+        # used a column in multiple nodes
+        # make sure things are in orde
+        mlti_lvl_labels.sort_values("data_field", inplace=True, axis=0)
         df = df[mlti_lvl_labels["data_field"]]
         
     mlti_lvl_labels.sort_values("data_field", inplace=True, axis=0)
