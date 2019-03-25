@@ -106,6 +106,8 @@ class Node(object):
         log.debug(f"Setting new Node Properties=>", self.properties)
         property_strings = Template(build_properties(self.properties))
         self.property_strings = property_strings.substitute(**self.properties)
+        if self.property_strings == '{}':
+            self.properties = {}
 
     def __repr__(self):
         id = self.ENTITY()
