@@ -422,6 +422,9 @@ def apply_data_model(df, data_model, import_by=None):
     # makes sure if we have extra columns defined in teh nodes that we don't shit the bed when applying our data model to the
     # the dataframe we have in front of us right now
     mlti_lvl_labels = mlti_lvl_labels[mlti_lvl_labels["data_field"].isin(df.columns)]
+    if len(mlti_lvl_labels["data_field"]) > df.columns:
+        df = df[mlti_lvl_labels["data_field"]]
+        
     mlti_lvl_labels.sort_values("data_field", inplace=True, axis=0)
 
     df.columns = pd.MultiIndex.from_tuples([tuple(x) for x in mlti_lvl_labels.values], names=["node", "property", "data_field"])
