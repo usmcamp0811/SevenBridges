@@ -16,7 +16,7 @@ class SevenBridges(object):
         self.import_data = import_data
         self.import_node = import_node
 
-def build_properties(properties):
+def build_properties(properties, set=False, prefix=""):
     """
     function takes in a dictionary of properties and converts them to a string representation used in a Template
     :param properties: key value pairs representing the properties of a node or relationship
@@ -24,26 +24,37 @@ def build_properties(properties):
     :return: string containing ${} placehoders that Template can inject the value of the property value
     :rtype: string
     """
-    c_prop = "{}"
+    if set is True:
+        char = "="
+        if prefix == "":
+            prefix = "n"
+        prefix = f"{prefix}."
+    else:
+        char = ":"
+        
+    c_prop = "{}{}"
     for k in properties.keys():
         if properties[k] is None:
             continue
         else:
             if str(properties[k]) == properties[k]:
-                c_prop = c_prop.format(k) + ' : "${}"'.format(k) + ", {}"
+                c_prop = c_prop.format(prefix, k) + ' {} "${}"'.format(char, k) + ", {}{}"
             elif hasattr(properties[k], 'is_point'):
                 if properties[k].to_string() is None:
                     continue
                 properties[k] = properties[k].to_string()
-                c_prop = c_prop.format(k) + ' : "${}"'.format(k) + ", {}"
+                c_prop = c_prop.format(prefix, k) + ' {} "${}"'.format(char, k) + ", {}{}"
             elif hasattr(properties[k], 'is_datetime'):
                 properties[k] = properties[k].to_string()
-                c_prop = c_prop.format(k) + ' : "${}"'.format(k) + ", {}"
+                c_prop = c_prop.format(prefix, k) + ' {} "${}"'.format(char, k) + ", {}{}"
             elif isinstance(properties[k], Point):
-                c_prop = c_prop.format(k) + ' : "${}"'.format(k) + ", {}"
+                c_prop = c_prop.format(prefix, k) + ' {} "${}"'.format(char, k) + ", {}{}"
             else:
-                c_prop = c_prop.format(k) + ' : "${}"'.format(k) + ", {}"
-    return "{"+c_prop[:-4]+"}"
+                c_prop = c_prop.format(prefix, k) + ' {} "${}"'.format(char, k) + ", {}{}"
+    if set is False:
+        return "{"+c_prop[:-4]+"}"
+    else:
+        return c_prop[:-6]
 
 def build_labels(labels):
     """
