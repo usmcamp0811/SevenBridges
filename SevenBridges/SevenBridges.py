@@ -52,7 +52,7 @@ def build_properties(properties, set=False, prefix=""):
             else:
                 c_prop = c_prop.format(prefix, k) + ' {} "${}"'.format(char, k) + ", {}{}"
     if set is False:
-        return "{"+c_prop[:-4]+"}"
+        return "{"+c_prop[:-6]+"}"
     else:
         return c_prop[:-6]
 
