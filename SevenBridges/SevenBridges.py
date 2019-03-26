@@ -171,11 +171,15 @@ class Node(object):
 
 
     def UNIQUE(self, n="n", drop=False):
+        if self.unique_constraint is None:
+            return None
         if drop is True:
             return f"DROP CONSTRAINT ON ({n}:{self.labels_string}) ASSERT {n}.{self.unique_constraint} IS UNIQUE"
         return f"CREATE CONSTRAINT ON ({n}:{self.labels_string}) ASSERT {n}.{self.unique_constraint} IS UNIQUE"
 
     def NODE_KEY(self, n="n", drop=False):
+        if len(self.__primarykey__) == 0:
+            return None
         c = [f"{n}.{x}" for x in self.__primarykey__]
         c = ",".join(c)
         if drop is True:
@@ -183,6 +187,8 @@ class Node(object):
         return f"CREATE CONSTRAINT ON ({n}:{self.labels_string}) ASSERT ({c}) IS NODE KEY"
 
     def REQUIRE(self, n='n', drop=False):
+        if len(self.required_constraint) == 0:
+            return None
         constraints = []
         if drop is True:
             create_drop = "DROP"
@@ -280,6 +286,8 @@ class Relationship():
             return f"MATCH {a}, {b} MERGE (a)-[r:{self.label} {self.property_strings}]->(b) RETURN r"
 
     def REQUIRE(self, n='r', drop=False):
+        if len(self.required_constraint) == 0:
+            return None
         constraints = []
         if drop is True:
             create_drop = "DROP"
