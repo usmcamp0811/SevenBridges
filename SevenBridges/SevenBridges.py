@@ -70,7 +70,14 @@ class Node(object):
     """
     A class that holds all the properties of a node including the Cypher representations of it
     """
-    def __init__(self, labels=None, properties=None, relationships=[], node_key=[], required_constraints=[], unique_constraints=None):
+    def __init__(self, labels=None, 
+                 properties=None, 
+                 relationships=[], 
+                 node_key=[], 
+                 required_constraints=[], 
+                 unique_constraints=None,
+                 primary_label=None
+                ):
         """
         Initilize this object with labels and properties, similarly to Py2Neo or other neo4j packages
         :param labels: this is either one or more labels as used in Neo4j
@@ -94,8 +101,11 @@ class Node(object):
         self.required_constraint = required_constraints
         self.unique_constraint = unique_constraints
         self.__primarykey__ = node_key
-        if labels is not None:
-            self.__primarylabel__ = self.labels[0]
+        if primary_label is not None:
+            self.__primarylabel__ = primary_label
+        else:
+            if labels is not None:
+                self.__primarylabel__ = self.labels[0]
 
     def load_properties_from_series(self, series=pd.Series()):
         series = series.reindex(list(self.properties.values()), axis=1)
@@ -174,8 +184,8 @@ class Node(object):
         if self.unique_constraint is None:
             return None
         if drop is True:
-            return f"DROP CONSTRAINT ON ({n}:{self.labels_string}) ASSERT {n}.{self.unique_constraint} IS UNIQUE"
-        return f"CREATE CONSTRAINT ON ({n}:{self.labels_string}) ASSERT {n}.{self.unique_constraint} IS UNIQUE"
+            return f"DROP CONSTRAINT ON ({n}:{self.__primarylabel__}) ASSERT {n}.{self.unique_constraint} IS UNIQUE"
+        return f"CREATE CONSTRAINT ON ({n}:{self.__primarylabel__}) ASSERT {n}.{self.unique_constraint} IS UNIQUE"
 
     def NODE_KEY(self, n="n", drop=False):
         if len(self.__primarykey__) == 0:
@@ -183,8 +193,8 @@ class Node(object):
         c = [f"{n}.{x}" for x in self.__primarykey__]
         c = ",".join(c)
         if drop is True:
-            return f"DROP CONSTRAINT ON ({n}:{self.labels_string}) ASSERT ({c}) IS NODE KEY"
-        return f"CREATE CONSTRAINT ON ({n}:{self.labels_string}) ASSERT ({c}) IS NODE KEY"
+            return f"DROP CONSTRAINT ON ({n}:{self.__primarylabel__}) ASSERT ({c}) IS NODE KEY"
+        return f"CREATE CONSTRAINT ON ({n}:{self.__primarylabel__}) ASSERT ({c}) IS NODE KEY"
 
     def REQUIRE(self, n='n', drop=False):
         if len(self.required_constraint) == 0:
@@ -195,7 +205,7 @@ class Node(object):
         else:
             create_drop = "CREATE"
         for rc in self.required_constraint:
-            constraints.append(f"{create_drop} CONSTRAINT ON ({n}:{self.labels_string}) ASSERT exists({n}.{rc})")
+            constraints.append(f"{create_drop} CONSTRAINT ON ({n}:{self.__primarylabel__}) ASSERT exists({n}.{rc})")
         if len(constraints) == 1:
             return constraints[0]
         else:
