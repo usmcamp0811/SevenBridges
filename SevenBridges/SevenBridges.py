@@ -454,6 +454,14 @@ def apply_data_model(df, data_model, import_by=None):
 
     return df
 
+def make_dummy_data(data_model):
+    dummy_data = dict()
+    for node in data_model:
+        for v, k in node.properties.items():
+            dummy_data[k] = k
+    dummy_data = pd.DataFrame(dummy_data, index=[0])
+    return dummy_data
+
 def create_nodes_and_relationships(df, data_model):
     """
     This generates all the Cypher needed to turn your dataframe into a graph. It does not actually run cypher queries
