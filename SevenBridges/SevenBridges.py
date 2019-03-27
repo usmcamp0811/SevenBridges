@@ -306,8 +306,16 @@ class Relationship():
         self.rel_tuple = rel_tuple
 
         if properties is not None:
-            property_string = Template(build_properties(self.properties))
-            self.property_strings = property_string.substitute(**self.properties)
+            if prop_map is True:
+                if rel_tuple in properties.keys():
+                    self.properties = properties[rel_tuple]
+                else:
+                    log.warn(f"You specified you were providing a dictionaory of property mappings via 'prop_map=True' but we couldn't find any properties for {rel_tuple}")
+                    self.properties = dict()
+            else:
+                self.properties = properties
+                property_string = Template(build_properties(self.properties))
+                self.property_strings = property_string.substitute(**self.properties)
         else:
             self.property_strings = None
 
