@@ -89,7 +89,8 @@ class Node(object):
                  node_key=[], 
                  required_constraints=[], 
                  unique_constraints=None,
-                 primary_label=None
+                 primary_label=None,
+                 prop_map=False
                 ):
         """
         Initilize this object with labels and properties, similarly to Py2Neo or other neo4j packages
@@ -99,7 +100,10 @@ class Node(object):
         :type properties: dict
         """
         self.labels = labels
-        self.properties = properties
+        if prop_map is True:
+            self.properties = properties[tuple(self.labels)]
+        else:
+            self.properties = properties
         self.relationships = relationships
         if type(labels) == str:
             self.labels_string = self.labels
