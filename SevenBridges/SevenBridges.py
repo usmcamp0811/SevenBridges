@@ -101,7 +101,11 @@ class Node(object):
         """
         self.labels = labels
         if prop_map is True:
-            self.properties = properties[tuple(self.labels)]
+            if tuple(self.labels) in properties.keys():
+                self.properties = properties[tuple(self.labels)]
+            else:
+                log.warn(f"You specified you were providing a dictionaory of property mappings via 'prop_map=True' but we couldn't find any properties for {labels}")
+                self.properties = dict()
         else:
             self.properties = properties
         self.relationships = relationships
@@ -129,8 +133,12 @@ class Node(object):
         property = None
         if len(self.__primarykey__) > 0:
             for p in self.__primarykey__:
-                property = self.properties[p]
-                self.keys[p] = property
+                if p not in self.properties.keys():
+                    log.warn(f"You specified a 'KEY=>{p} \nThis property was not found in the properties dictionary!!!")
+                    log.warn(f"Please confirm you created the Node=>{self.labels_string} correctly!")
+                else:
+                    property = self.properties[p]
+                    self.keys[p] = property
             self.keys_strings = Template(build_properties(self.keys))
             self.keys_strings = self.key_strings.substitute(**self.keys)
             
