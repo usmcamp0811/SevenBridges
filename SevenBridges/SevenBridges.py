@@ -7,6 +7,8 @@ import datetime
 import warnings
 import copy
 import logging
+import re
+
 
 log = logging.getLogger(__file__)
 
@@ -106,7 +108,7 @@ class Node(object):
             self.labels_string = build_labels(self.labels)
         if properties is not None:
             property_strings = Template(build_properties(self.properties))
-            self.property_strings = property_strings.substitute(**self.properties)
+            self.property_strings = re.sub(r"\\", r"\\\\", property_strings.substitute(**self.properties))
         else:
             self.property_strings = None
         self.required_constraint = required_constraints
@@ -137,7 +139,7 @@ class Node(object):
         self.properties = properties
         log.debug(f"Setting new Node Properties=>", self.properties)
         property_strings = Template(build_properties(self.properties))
-        self.property_strings = property_strings.substitute(**self.properties)
+        self.property_strings = re.sub(r"\\", r"\\\\", property_strings.substitute(**self.properties))
         if self.property_strings == '{}':
             self.properties = {}
 
@@ -149,7 +151,7 @@ class Node(object):
         self.properties = properties
         log.debug(f"Setting new Node Properties=>",self.properties)
         property_strings = Template(build_properties(self.properties))
-        self.property_strings = property_strings.substitute(**self.properties)
+        self.property_strings = re.sub(r"\\", r"\\\\", property_strings.substitute(**self.properties))
 
     def ENTITY(self, n="n"):
         """
@@ -198,9 +200,9 @@ class Node(object):
                 property = self.properties[p]
                 self.keys[p] = property
             self.keys_strings = Template(build_properties(self.keys))
-            self.keys_strings = self.key_strings.substitute(**self.keys)
+            self.keys_strings = re.sub(r"\\", r"\\\\", self.key_strings.substitute(**self.keys))
             properties_set_string = Template(build_properties(self.properties, set=True, prefix=n))
-            properties_set_string = properties_set_string.substitute(**self.properties)
+            properties_set_string = re.sub(r"\\", r"\\\\", property_strings.substitute(**self.properties))
             
             return f"""MERGE ({n}:{self.labels_string} {self.keys_strings})
 ON CREATE SET {properties_set_string}
