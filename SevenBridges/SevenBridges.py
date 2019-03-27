@@ -117,6 +117,17 @@ class Node(object):
         else:
             if labels is not None:
                 self.__primarylabel__ = self.labels[0]
+                
+        self.keys = dict()
+        self.keys_strings = ""
+        property = None
+        if len(self.__primarykey__) > 0:
+            for p in self.__primarykey__:
+                property = self.properties[p]
+                self.keys[p] = property
+            self.keys_strings = Template(build_properties(self.keys))
+            self.keys_strings = self.key_strings.substitute(**self.keys)
+            
 
     def load_properties_from_series(self, series=pd.Series()):
         series = series.reindex(list(self.properties.values()), axis=1)
@@ -179,7 +190,23 @@ class Node(object):
         :return: the CQL to make this node in neo4j
         :rtype: string
         """
-        return f"MERGE ({n}:{self.labels_string} {self.property_strings})"
+        self.keys = dict()
+        self.keys_strings = ""
+        property = None
+        if len(self.__primarykey__) > 0:
+            for p in self.__primarykey__:
+                property = self.properties[p]
+                self.keys[p] = property
+            self.keys_strings = Template(build_properties(self.keys))
+            self.keys_strings = self.key_strings.substitute(**self.keys)
+            properties_set_string = Template(build_properties(self.properties, set=True, prefix=n))
+            properties_set_string = properties_set_string.substitute(**self.properties)
+            
+            return f"""MERGE ({n}:{self.labels_string} {self.keys_strings})
+ON CREATE SET {properties_set_string}
+ON MATCH SET {properties_set_string}"""
+        else:
+            return f"MERGE ({n}:{self.labels_string} {self.property_strings})"
 
     def DELETE(self, n="n", detach=False, relationships=False, relationship_label=""):
         if detach is True:
