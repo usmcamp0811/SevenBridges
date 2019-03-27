@@ -102,7 +102,11 @@ class Node(object):
         self.labels = labels
         if prop_map is True:
             if tuple(self.labels) in properties.keys():
-                self.properties = properties[tuple(self.labels)]
+                if len(self.labels) == 1:
+                    l = tuple(self.labels[0])
+                else:
+                    l = tuple(self.labels)
+                self.properties = properties[l]
             else:
                 log.warn(f"You specified you were providing a dictionaory of property mappings via 'prop_map=True' but we couldn't find any properties for {labels}")
                 self.properties = dict()
